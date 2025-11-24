@@ -1,5 +1,9 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 
+// Fields that are already handled by the core student model and should not
+// be shown as dynamic inputs driven by the template layout.
+const STANDARD_TEMPLATE_FIELDS = ['name', 'course', 'date', 'instructor', 'batch']
+
 export default function Students({ token }) {
   const [courseCode, setCourseCode] = useState('')
   const [batchCode, setBatchCode] = useState('')
@@ -110,7 +114,7 @@ export default function Students({ token }) {
     })()
   }, [])
 
-  // load batches and template fields for selected course with caching
+  // load batches and template fields for selected course/batch with caching
   useEffect(() => {
     (async () => {
       const course = courses.find(c => c.code === courseCode)
@@ -137,20 +141,27 @@ export default function Students({ token }) {
       // Reset custom fields when course changes
       setCustomFields({});
       
-      // Get template fields for the selected course
+      // Get template fields for the selected course/batch (only visible fields)
       if (templatesData && templatesData.length > 0) {
         // Get all unique field names from textLayout
         const fields = new Set();
-        templatesData.forEach(template => {
-          if (template.textLayout && Array.isArray(template.textLayout)) {
-            template.textLayout.forEach(field => {
-              // Only include non-standard fields
-              if (field.field && !['name', 'course', 'date', 'instructor', 'batch'].includes(field.field)) {
-                fields.add(field.field);
-              }
-            });
-          }
-        });
+        templatesData
+          .filter(template => {
+            if (!template.courseId || template.courseId !== course._id) return false;
+            if (batchCode && template.batchCode) return template.batchCode === batchCode;
+            return true;
+          })
+          .forEach(template => {
+            if (template.textLayout && Array.isArray(template.textLayout)) {
+              template.textLayout
+                .filter(item => item.visible !== false)
+                .forEach(item => {
+                  if (item.field && !STANDARD_TEMPLATE_FIELDS.includes(item.field)) {
+                    fields.add(item.field);
+                  }
+                });
+            }
+          });
         setTemplateFields(Array.from(fields));
       } else {
         setTemplateFields([]);
@@ -166,7 +177,7 @@ export default function Students({ token }) {
     // reset paging when filters change
     setPage(1)
     load()
-  }, [courseCode, courses])
+  }, [courseCode, batchCode, courses])
 
   async function updateStatus(id, value) {
     setMsg('Updating...')
