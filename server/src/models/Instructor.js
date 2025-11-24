@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 const InstructorSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
+    amharicName: { type: String },
     course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true },
   },
   { timestamps: true }

@@ -19,12 +19,10 @@ export default function TemplateUpload({ token }) {
   const [showSidebar, setShowSidebar] = useState(true)
   const [layout, setLayout] = useState([
     { field: "name", x: 800, y: 500, fontSize: 64, color: "#000000", align: "center", visible: true },
-    { field: "amharic_name", x: 800, y: 560, fontSize: 52, color: "#000000", align: "center", visible: true },
-    { field: "course", x: 800, y: 620, fontSize: 36, color: "#333333", align: "center", visible: true },
-    { field: "date", x: 800, y: 700, fontSize: 28, color: "#555555", align: "center", visible: true },
-    { field: "amharic_date", x: 800, y: 760, fontSize: 28, color: "#555555", align: "center", visible: true },
-    { field: "instructor", x: 800, y: 820, fontSize: 28, color: "#555555", align: "center", visible: true },
-    { field: "batch", x: 800, y: 880, fontSize: 22, color: "#666666", align: "center", visible: true }
+    { field: "course", x: 800, y: 580, fontSize: 36, color: "#333333", align: "center", visible: true },
+    { field: "date", x: 800, y: 660, fontSize: 28, color: "#555555", align: "center", visible: true },
+    { field: "instructor", x: 800, y: 740, fontSize: 28, color: "#555555", align: "center", visible: true },
+    { field: "batch", x: 800, y: 820, fontSize: 22, color: "#666666", align: "center", visible: true }
   ])
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -282,10 +280,8 @@ export default function TemplateUpload({ token }) {
   const getFieldLabel = (field) => {
     switch (field) {
       case 'name': return 'Student Name'
-      case 'amharic_name': return 'Student Name (Amharic)'
       case 'course': return 'Course Name'
       case 'date': return 'Completion Date'
-      case 'amharic_date': return 'Completion Date (Amharic)'
       case 'instructor': return 'Instructor'
       case 'batch': return 'Batch Code'
       default: return field
