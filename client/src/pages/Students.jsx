@@ -112,6 +112,8 @@ export default function Students({ token }) {
       if (!course) { 
         setBatches([]);
         setTemplateFields([]);
+        // Reset custom fields when no course is selected
+        setCustomFields({});
         return;
       }
       
@@ -127,6 +129,9 @@ export default function Students({ token }) {
         if (!batchCode && batchesData[0]) setBatchCode(batchesData[0].code)
       }
       
+      // Reset custom fields when course changes
+      setCustomFields({});
+      
       // Get template fields for the selected course
       if (templatesData && templatesData.length > 0) {
         // Get all unique field names from textLayout
@@ -134,6 +139,7 @@ export default function Students({ token }) {
         templatesData.forEach(template => {
           if (template.textLayout && Array.isArray(template.textLayout)) {
             template.textLayout.forEach(field => {
+              // Only include non-standard fields
               if (field.field && !['name', 'course', 'date', 'instructor', 'batch'].includes(field.field)) {
                 fields.add(field.field);
               }
@@ -336,8 +342,13 @@ export default function Students({ token }) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="label">Course</label>
-                  <select className="select w-full" value={courseCode} onChange={e=>{ setCourseCode(e.target.value); setBatchCode('')}}>
-                    {courses.map(c => <option key={c._id} value={c.code}>{c.name} ({c.code})</option>)}
+                  <select 
+                    className="select w-full" 
+                    value={courseCode} 
+                    onChange={handleCourseChange}
+                  >
+                    <option value="">Select a course</option>
+                    {courses.map(c => <option key={c._id} value={c.code}>{c.name}</option>)}
                   </select>
                 </div>
                 <div>
@@ -383,8 +394,8 @@ export default function Students({ token }) {
                   <input className="input w-full" type="date" value={completionDate} onChange={e=>setCompletionDate(e.target.value)} />
                 </div>
                 
-                {/* Custom Fields */}
-                {templateFields.length > 0 && (
+                {/* Dynamic Fields Section */}
+                {courseCode && templateFields.length > 0 && (
                   <div className="col-span-2 space-y-2">
                     <label className="label">Certificate Fields</label>
                     {templateFields.map((field) => (
