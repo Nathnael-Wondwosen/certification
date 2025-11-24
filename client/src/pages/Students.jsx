@@ -22,6 +22,8 @@ export default function Students({ token }) {
   const [batches, setBatches] = useState([])
   const [instructors, setInstructors] = useState([])
   const [instructorMode, setInstructorMode] = useState('pick') // pick | other
+  const [customFields, setCustomFields] = useState({})
+  const [templateFields, setTemplateFields] = useState([])
 
   // Edit student form
   const [editingStudent, setEditingStudent] = useState(null)
@@ -103,22 +105,51 @@ export default function Students({ token }) {
     })()
   }, [])
 
-  // load batches for selected course with caching
+  // load batches and template fields for selected course with caching
   useEffect(() => {
     (async () => {
       const course = courses.find(c => c.code === courseCode)
-      if (!course) { setBatches([]); return }
+      if (!course) { 
+        setBatches([]);
+        setTemplateFields([]);
+        return;
+      }
       
       // Check if we have cached batches for this course
       const cacheKey = `batches_${course._id}`
-      const batchesData = await fetchWithCache(`/api/admin/batches?courseId=${course._id}`, cacheKey)
+      const [batchesData, templatesData] = await Promise.all([
+        fetchWithCache(`/api/admin/batches?courseId=${course._id}`, cacheKey),
+        fetchWithCache(`/api/admin/templates?courseId=${course._id}`, `templates_${course._id}`)
+      ])
+      
       if (batchesData) {
         setBatches(batchesData);
         if (!batchCode && batchesData[0]) setBatchCode(batchesData[0].code)
       }
       
+      // Get template fields for the selected course
+      if (templatesData && templatesData.length > 0) {
+        // Get all unique field names from textLayout
+        const fields = new Set();
+        templatesData.forEach(template => {
+          if (template.textLayout && Array.isArray(template.textLayout)) {
+            template.textLayout.forEach(field => {
+              if (field.field && !['name', 'course', 'date', 'instructor', 'batch'].includes(field.field)) {
+                fields.add(field.field);
+              }
+            });
+          }
+        });
+        setTemplateFields(Array.from(fields));
+      } else {
+        setTemplateFields([]);
+      }
+      
       // refresh instructors for the selected course
-      const instData = await fetchWithCache(`/api/admin/instructors?courseCode=${encodeURIComponent(course.code)}`, `instructors_${course.code}`)
+      const instData = await fetchWithCache(
+        `/api/admin/instructors?courseCode=${encodeURIComponent(course.code)}`,
+        `instructors_${course.code}`
+      )
       if (instData) setInstructors(instData)
     })()
     // reset paging when filters change
@@ -139,14 +170,49 @@ export default function Students({ token }) {
   async function createStudent(e) {
     e.preventDefault()
     setMsg('Creating...'); setCreatedId('')
-    const body = { name, email, courseCode, batchCode, status: newStatus, instructor, completionDate }
+    
+    // Prepare custom fields from the form
+    const customFieldsData = {};
+    templateFields.forEach(field => {
+      if (customFields[field] !== undefined) {
+        customFieldsData[field] = customFields[field];
+      }
+    });
+    
+    const body = { 
+      name, 
+      email, 
+      courseCode, 
+      batchCode, 
+      status: newStatus, 
+      instructor, 
+      completionDate,
+      customFields: Object.keys(customFieldsData).length > 0 ? customFieldsData : undefined
+    }
+    
     const res = await fetch('/api/admin/students', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
+      method: 'POST', 
+      headers: { 
+        'Content-Type': 'application/json', 
+        Authorization: `Bearer ${token}` 
+      }, 
+      body: JSON.stringify(body)
     })
-    const data = await res.json(); if (!res.ok) { setMsg(data.message||'Error'); return }
+    
+    const data = await res.json(); 
+    if (!res.ok) { 
+      setMsg(data.message || 'Error'); 
+      return 
+    }
+    
     setMsg('Created')
     setCreatedId(data.publicId)
-    setName(''); setEmail(''); setInstructor(''); setCompletionDate('')
+    setName(''); 
+    setEmail(''); 
+    setInstructor(''); 
+    setCompletionDate('');
+    setCustomFields({});
+    
     // after create, reload first page to include newest at top
     setPage(1)
     load()
@@ -166,13 +232,22 @@ export default function Students({ token }) {
       batchCode: student.batchCode,
       status: student.status,
       instructor: student.instructor || '',
-      completionDate: student.completionDate ? student.completionDate.split('T')[0] : ''
+      completionDate: student.completionDate ? student.completionDate.split('T')[0] : '',
+      customFields: student.customFields || {}
     })
+    
+    // Set custom fields for the form
+    if (student.customFields) {
+      setCustomFields({ ...student.customFields });
+    } else {
+      setCustomFields({});
+    }
   }
 
   // Close edit form
   function closeEditForm() {
-    setEditingStudent(null)
+    setEditingStudent(null);
+    setCustomFields({});
   }
 
   // Handle edit form changes
@@ -183,11 +258,32 @@ export default function Students({ token }) {
       [name]: value
     }))
   }
+  
+  // Handle custom field changes
+  function handleCustomFieldChange(field, value) {
+    setCustomFields(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  }
 
   // Update student
   async function updateStudent(e) {
     e.preventDefault()
     setMsg('Updating...')
+    
+    // Prepare custom fields for the update
+    const customFieldsData = {};
+    templateFields.forEach(field => {
+      if (customFields[field] !== undefined) {
+        customFieldsData[field] = customFields[field];
+      }
+    });
+    
+    const updateData = {
+      ...editForm,
+      customFields: Object.keys(customFieldsData).length > 0 ? customFieldsData : undefined
+    };
     
     const res = await fetch(`/api/admin/students/${editingStudent}`, {
       method: 'PUT',
@@ -195,7 +291,7 @@ export default function Students({ token }) {
         'Content-Type': 'application/json', 
         Authorization: `Bearer ${token}` 
       },
-      body: JSON.stringify(editForm)
+      body: JSON.stringify(updateData)
     })
     
     const data = await res.json()
@@ -286,6 +382,27 @@ export default function Students({ token }) {
                   <label className="label">Completion Date</label>
                   <input className="input w-full" type="date" value={completionDate} onChange={e=>setCompletionDate(e.target.value)} />
                 </div>
+                
+                {/* Custom Fields */}
+                {templateFields.length > 0 && (
+                  <div className="col-span-2 space-y-2">
+                    <label className="label">Certificate Fields</label>
+                    {templateFields.map((field) => (
+                      <div key={field} className="flex flex-col space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          {field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+                        </label>
+                        <input
+                          type="text"
+                          className="input w-full"
+                          value={customFields[field] || ''}
+                          onChange={(e) => handleCustomFieldChange(field, e.target.value)}
+                          placeholder={`Enter ${field}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="grid grid-cols-1 gap-3 items-end">
                 <div>
@@ -485,6 +602,27 @@ export default function Students({ token }) {
                     onChange={handleEditChange} 
                   />
                 </div>
+                
+                {/* Custom Fields in Edit Form */}
+                {templateFields.length > 0 && (
+                  <div className="col-span-2 space-y-2">
+                    <label className="label">Certificate Fields</label>
+                    {templateFields.map((field) => (
+                      <div key={field} className="flex flex-col space-y-1">
+                        <label className="text-sm font-medium text-gray-700">
+                          {field.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}:
+                        </label>
+                        <input
+                          type="text"
+                          className="input w-full"
+                          value={customFields[field] || ''}
+                          onChange={(e) => handleCustomFieldChange(field, e.target.value)}
+                          placeholder={`Enter ${field}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
