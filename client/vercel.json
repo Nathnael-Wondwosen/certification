@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "https://te-certificate-server.vercel.app/$1" },
+    { "source": "/((?!assets|favicon\\.ico|robots\\.txt|manifest\\.json).*)", "destination": "/" }
+  ]
+}

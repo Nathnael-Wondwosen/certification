@@ -1,0 +1,12 @@
+{
+  "name": "te-certificate-portal",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "cd client && npm install && npm run build",
+    "postbuild": "echo 'Build completed'"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
