@@ -37,6 +37,11 @@ export default function Students({ token }) {
     completionDate: ''
   })
 
+  const handleCourseChange = (e) => {
+  setCourseCode(e.target.value);
+  setCustomFields({});
+}
+
   // Cache for dropdown data
   const [cache, setCache] = useState({})
 
