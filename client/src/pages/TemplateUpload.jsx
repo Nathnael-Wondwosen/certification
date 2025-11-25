@@ -22,7 +22,9 @@ export default function TemplateUpload({ token }) {
     { field: "course", x: 800, y: 580, fontSize: 36, color: "#333333", align: "center", visible: true },
     { field: "date", x: 800, y: 660, fontSize: 28, color: "#555555", align: "center", visible: true },
     { field: "instructor", x: 800, y: 740, fontSize: 28, color: "#555555", align: "center", visible: true },
-    { field: "batch", x: 800, y: 820, fontSize: 22, color: "#666666", align: "center", visible: true }
+    { field: "batch", x: 800, y: 820, fontSize: 22, color: "#666666", align: "center", visible: true },
+    { field: "an", x: 400, y: 400, fontSize: 24, color: "#000000", align: "center", visible: true },
+    { field: "ad", x: 1200, y: 400, fontSize: 24, color: "#000000", align: "center", visible: true }
   ])
   const [file, setFile] = useState(null)
   const [previewUrl, setPreviewUrl] = useState(null)
@@ -284,6 +286,8 @@ export default function TemplateUpload({ token }) {
       case 'date': return 'Completion Date'
       case 'instructor': return 'Instructor'
       case 'batch': return 'Batch Code'
+      case 'an': return 'AN (Award Number)'
+      case 'ad': return 'AD (Award Date)'
       default: return field
     }
   }

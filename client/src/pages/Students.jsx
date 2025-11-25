@@ -16,6 +16,8 @@ export default function Students({ token }) {
   const [email, setEmail] = useState('')
   const [instructor, setInstructor] = useState('')
   const [completionDate, setCompletionDate] = useState('')
+  const [an, setAn] = useState('')
+  const [ad, setAd] = useState('')
   const [newStatus, setNewStatus] = useState('pending')
   const [createdId, setCreatedId] = useState('')
   const [courses, setCourses] = useState([])
@@ -32,7 +34,9 @@ export default function Students({ token }) {
     batchCode: '',
     status: 'pending',
     instructor: '',
-    completionDate: ''
+    completionDate: '',
+    an: '',
+    ad: ''
   })
 
   // Cache for dropdown data
@@ -139,7 +143,19 @@ export default function Students({ token }) {
   async function createStudent(e) {
     e.preventDefault()
     setMsg('Creating...'); setCreatedId('')
-    const body = { name, email, courseCode, batchCode, status: newStatus, instructor, completionDate }
+    const body = { 
+      name, 
+      email, 
+      courseCode, 
+      batchCode, 
+      status: newStatus, 
+      instructor, 
+      completionDate,
+      customFields: {
+        an,
+        ad
+      }
+    }
     const res = await fetch('/api/admin/students', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
     })
@@ -166,7 +182,9 @@ export default function Students({ token }) {
       batchCode: student.batchCode,
       status: student.status,
       instructor: student.instructor || '',
-      completionDate: student.completionDate ? student.completionDate.split('T')[0] : ''
+      completionDate: student.completionDate ? student.completionDate.split('T')[0] : '',
+      an: student.customFields?.an || '',
+      ad: student.customFields?.ad || ''
     })
   }
 
@@ -189,13 +207,23 @@ export default function Students({ token }) {
     e.preventDefault()
     setMsg('Updating...')
     
+    const { an, ad, ...rest } = editForm;
+    const updateData = {
+      ...rest,
+      customFields: {
+        an,
+        ad,
+        ...(editingStudent?.customFields || {}) // Preserve other custom fields if they exist
+      }
+    };
+    
     const res = await fetch(`/api/admin/students/${editingStudent}`, {
       method: 'PUT',
       headers: { 
         'Content-Type': 'application/json', 
         Authorization: `Bearer ${token}` 
       },
-      body: JSON.stringify(editForm)
+      body: JSON.stringify(updateData)
     })
     
     const data = await res.json()
