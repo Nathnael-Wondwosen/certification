@@ -116,17 +116,23 @@ export default function Students({ token }) {
   // load batches and attributes for selected course with caching
   useEffect(() => {
     (async () => {
+      console.log('Available courses:', courses); // Debug log
       const course = courses.find(c => c.code === courseCode);
+      console.log('Selected course:', course); // Debug log
+      
       if (!course) { 
+        console.log('No course found with code:', courseCode); // Debug log
         setBatches([]);
         setCourseAttributes([]);
         return; 
       }
       
       // Set course attributes if available
-      if (course.attributes) {
+      if (course.attributes && course.attributes.length > 0) {
+        console.log('Setting course attributes:', course.attributes); // Debug log
         setCourseAttributes(course.attributes);
       } else {
+        console.log('No attributes found for course:', course.code, course.name); // Debug log
         setCourseAttributes([]);
       }
       
@@ -309,8 +315,30 @@ export default function Students({ token }) {
     load()
   }
 
+  // Debug function to fetch and log course data
+  const debugFetchCourses = async () => {
+    try {
+      const res = await fetch('/api/admin/courses', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      console.log('Courses API Response:', data);
+      alert('Check console for course data');
+    } catch (error) {
+      console.error('Error fetching courses:', error);
+      alert('Error fetching courses. Check console for details.');
+    }
+  };
+
   return (
     <div className="w-full">
+      <button 
+        onClick={debugFetchCourses}
+        className="fixed bottom-4 right-4 bg-red-500 text-white p-2 rounded-full shadow-lg z-50"
+        title="Debug: Fetch Course Data"
+      >
+        🐞
+      </button>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Create Student Form */}
         <div className="lg:col-span-1">
@@ -379,14 +407,31 @@ export default function Students({ token }) {
                 </div>
                 
                 {/* Dynamic Custom Fields */}
-                {courseAttributes.length > 0 && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <h3 className="font-medium mb-3">Course Attributes</h3>
+                <div className="mt-4 pt-4 border-t border-gray-200">
+                  <h3 className="font-medium mb-3">
+                    Course Attributes 
+                    <span className="text-sm text-gray-500 ml-2">
+                      ({courseAttributes.length} attributes for {courseCode})
+                    </span>
+                  </h3>
+                  {courseAttributes.length > 0 ? (
                     <div className="grid grid-cols-1 gap-3">
-                      {courseAttributes.map(attr => renderCustomField(attr))}
+                      {courseAttributes.map((attr, index) => (
+                        <div key={index} className="p-2 bg-gray-50 rounded">
+                          {renderCustomField(attr)}
+                          <div className="text-xs text-gray-500 mt-1">
+                            Name: {attr.name} | Type: {attr.type || 'text'}
+                            {attr.required && ' | Required'}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                )}
+                  ) : (
+                    <div className="text-sm text-gray-500 italic">
+                      No custom attributes defined for this course.
+                    </div>
+                  )}
+                </div>
               </div>
               <div>
                 <button className="btn" type="submit">Create</button>
