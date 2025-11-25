@@ -99,41 +99,125 @@ export default function Students({ token }) {
   // load courses and instructors for dropdowns with caching
   useEffect(() => {
     (async () => {
-      const coursesData = await fetchWithCache('/api/admin/courses', 'courses')
-      if (coursesData) {
-        setCourses(coursesData);
-        if (!courseCode && coursesData[0]) {
-          setCourseCode(coursesData[0].code);
-          // Set initial course attributes if available
-          if (coursesData[0].attributes) {
-            setCourseAttributes(coursesData[0].attributes);
+      try {
+        console.log('Fetching courses...');
+        const coursesData = await fetchWithCache('/api/admin/courses?include=attributes', 'courses');
+        console.log('Courses data received:', coursesData);
+        
+        if (coursesData && Array.isArray(coursesData)) {
+          // If we have a specific course code we're looking for (e.g., 'COFFEE_CUPPING')
+          const targetCourseCode = 'COFFEE_CUPPING'; // Adjust this to match your course code
+          const targetCourse = coursesData.find(c => c.code === targetCourseCode);
+          
+          setCourses(coursesData);
+          
+          // If we found the target course, select it by default
+          if (targetCourse) {
+            console.log(`Found target course (${targetCourseCode}):`, targetCourse);
+            setCourseCode(targetCourse.code);
+            
+            if (targetCourse.attributes && targetCourse.attributes.length > 0) {
+              console.log(`Setting attributes for ${targetCourseCode}:`, targetCourse.attributes);
+              setCourseAttributes(targetCourse.attributes);
+            } else {
+              console.log(`No attributes found for ${targetCourseCode}, attempting to load them...`);
+              // Try to load attributes specifically for this course
+              try {
+                const res = await fetch(`/api/admin/courses/${targetCourse._id}?include=attributes`, {
+                  headers: { Authorization: `Bearer ${token}` }
+                });
+                const detailedCourse = await res.json();
+                
+                if (detailedCourse.attributes && detailedCourse.attributes.length > 0) {
+                  console.log(`Fetched attributes for ${targetCourseCode}:`, detailedCourse.attributes);
+                  setCourseAttributes(detailedCourse.attributes);
+                  // Update the course in the courses array
+                  const updatedCourses = coursesData.map(c => 
+                    c._id === targetCourse._id ? { ...c, attributes: detailedCourse.attributes } : c
+                  );
+                  setCourses(updatedCourses);
+                } else {
+                  console.log(`No attributes found in detailed fetch for ${targetCourseCode}`);
+                  setCourseAttributes([]);
+                }
+              } catch (error) {
+                console.error(`Error fetching attributes for ${targetCourseCode}:`, error);
+                setCourseAttributes([]);
+              }
+            }
+          } 
+          // If no target course is found and no course is selected, select the first one
+          else if (!courseCode && coursesData[0]) {
+            const firstCourse = coursesData[0];
+            console.log('Setting initial course:', firstCourse.code, 'with attributes:', firstCourse?.attributes);
+            setCourseCode(firstCourse.code);
+            setCourseAttributes(firstCourse.attributes || []);
           }
+        } else {
+          console.error('Invalid courses data received:', coursesData);
         }
+      } catch (error) {
+        console.error('Error loading courses:', error);
       }
-    })()
+    })();
   }, [])
 
   // load batches and attributes for selected course with caching
   useEffect(() => {
     (async () => {
-      console.log('Available courses:', courses); // Debug log
-      const course = courses.find(c => c.code === courseCode);
-      console.log('Selected course:', course); // Debug log
-      
-      if (!course) { 
-        console.log('No course found with code:', courseCode); // Debug log
+      if (!courseCode || !courses || courses.length === 0) {
+        console.log('No course selected or courses not loaded yet');
         setBatches([]);
         setCourseAttributes([]);
-        return; 
+        return;
       }
+      
+      console.log('Available courses:', courses);
+      const course = courses.find(c => c.code === courseCode);
+      
+      if (!course) {
+        console.error('Selected course not found in courses list:', courseCode);
+        setBatches([]);
+        setCourseAttributes([]);
+        return;
+      }
+      
+      console.log('Selected course data:', {
+        code: course.code,
+        name: course.name,
+        attributes: course.attributes,
+        hasAttributes: !!course.attributes && course.attributes.length > 0
+      });
       
       // Set course attributes if available
       if (course.attributes && course.attributes.length > 0) {
-        console.log('Setting course attributes:', course.attributes); // Debug log
+        console.log('Setting course attributes:', course.attributes);
         setCourseAttributes(course.attributes);
       } else {
-        console.log('No attributes found for course:', course.code, course.name); // Debug log
-        setCourseAttributes([]);
+        console.log('No attributes found for course:', course.code, course.name);
+        // Try to fetch attributes specifically for this course if not included
+        try {
+          console.log('Attempting to fetch attributes for course:', course.code);
+          const res = await fetch(`/api/admin/courses/${course._id}?include=attributes`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          const courseWithAttrs = await res.json();
+          
+          if (courseWithAttrs.attributes && courseWithAttrs.attributes.length > 0) {
+            console.log('Fetched attributes for course:', courseWithAttrs.attributes);
+            setCourseAttributes(courseWithAttrs.attributes);
+            // Update the course in the courses array
+            setCourses(prev => prev.map(c => 
+              c._id === course._id ? { ...c, attributes: courseWithAttrs.attributes } : c
+            ));
+          } else {
+            console.log('No attributes found in detailed course fetch');
+            setCourseAttributes([]);
+          }
+        } catch (error) {
+          console.error('Error fetching course attributes:', error);
+          setCourseAttributes([]);
+        }
       }
       
       // Check if we have cached batches for this course
