@@ -11,7 +11,8 @@ const StudentSchema = new mongoose.Schema(
     status: { type: String, enum: ['pending', 'in_progress', 'complete', 'blocked'], default: 'pending', index: true },
     instructor: { type: String },
     completionDate: { type: Date },
-    amharicDate: { type: Date },
+    // Store localized Amharic date as string for display (e.g. "ጥቅምት ፳፯ 2017")
+    amharicDate: { type: String },
     customFields: { type: Map, of: String } // For custom certificate fields
   },
   { timestamps: true }

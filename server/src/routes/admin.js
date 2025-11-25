@@ -21,6 +21,32 @@ const nano = customAlphabet('123456789ABCDEFGHJKLMNPQRSTUVWXYZ', 8);
 
 const router = express.Router();
 
+// Known template fields (mapped directly from student/top-level values)
+const KNOWN_TEMPLATE_FIELDS = new Set([
+  'name', 'amharicName', 'course', 'date', 'amharicDate', 'instructor', 'batch', 'publicId'
+]);
+
+function validateTextLayout(layout) {
+  if (!Array.isArray(layout)) return { ok: false, message: 'textLayout must be an array' };
+  const invalid = [];
+  const unknownSafe = [];
+  for (const item of layout) {
+    const f = item && item.field;
+    if (!f || typeof f !== 'string') {
+      invalid.push(String(f));
+      continue;
+    }
+    // allow alphanumeric, underscore and hyphen only
+    if (!/^[\w-]+$/.test(f)) {
+      invalid.push(f);
+      continue;
+    }
+    if (!KNOWN_TEMPLATE_FIELDS.has(f)) unknownSafe.push(f);
+  }
+  if (invalid.length > 0) return { ok: false, message: 'Invalid field names: ' + invalid.join(', ') };
+  return { ok: true, unknown: Array.from(new Set(unknownSafe)) };
+}
+
 // Health check endpoint for authenticated connections
 router.get('/health', (req, res) => {
   res.json({ 
@@ -236,6 +262,9 @@ router.post('/templates', imageUpload.single('background'), async (req, res) => 
     const batch = await getBatchByCode(course._id, batchCode);
     if (!batch) return res.status(400).json({ message: 'batch not found' });
     const layout = textLayout ? JSON.parse(textLayout) : [];
+    // Validate layout fields
+    const v = validateTextLayout(layout);
+    if (!v.ok) return res.status(400).json({ message: v.message });
     // Upload to Appwrite
     const fileId = await awUpload(req.file.buffer, req.file.originalname || 'background.png');
     const tpl = await CertificateTemplate.findOneAndUpdate(
@@ -250,7 +279,9 @@ router.post('/templates', imageUpload.single('background'), async (req, res) => 
       },
       { upsert: true, new: true }
     );
-    res.json(tpl);
+    const resp = { template: tpl };
+    if (v.unknown && v.unknown.length) resp.warnings = [`Unknown fields present in layout: ${v.unknown.join(', ')}. These will be resolved from student properties or customFields if present.`];
+    res.json(resp);
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -340,12 +371,17 @@ router.put('/templates/:id', imageUpload.single('background'), async (req, res) 
     const batch = await getBatchByCode(course._id, batchCode);
     if (!batch) return res.status(400).json({ message: 'batch not found' });
     
+    const parsedLayout = textLayout ? JSON.parse(textLayout) : [];
+    // Validate layout fields
+    const v = validateTextLayout(parsedLayout);
+    if (!v.ok) return res.status(400).json({ message: v.message });
+
     const updateData = {
       course: course._id,
       batch: batch._id,
       width: Number(width) || 1600,
       height: Number(height) || 1131,
-      textLayout: textLayout ? JSON.parse(textLayout) : []
+      textLayout: parsedLayout
     };
     
     // Only update background if a new file was uploaded
@@ -370,7 +406,9 @@ router.put('/templates/:id', imageUpload.single('background'), async (req, res) 
       return res.status(404).json({ message: 'Template not found' });
     }
     
-    res.json(tpl);
+    const resp = { template: tpl };
+    if (v.unknown && v.unknown.length) resp.warnings = [`Unknown fields present in layout: ${v.unknown.join(', ')}. These will be resolved from student properties or customFields if present.`];
+    res.json(resp);
   } catch (e) {
     res.status(500).json({ message: e.message });
   }
@@ -405,42 +443,71 @@ router.post('/students/import', csvUpload.single('file'), async (req, res) => {
     const parser = fs.createReadStream(req.file.path).pipe(parse({ columns: true, trim: true }));
     for await (const record of parser) rows.push(record);
 
+    // Optional mapping provided by client: JSON string in form field `mapping`
+    const mapping = req.body.mapping ? JSON.parse(req.body.mapping) : null;
+
     const results = { upserted: 0, errors: [] };
     for (const r of rows) {
       try {
-        const course = await getCourseByCode(r.courseCode);
-        if (!course) throw new Error('course not found: ' + r.courseCode);
-        const batch = await getBatchByCode(course._id, r.batchCode);
-        if (!batch) throw new Error('batch not found: ' + r.batchCode);
-        const publicId = (r.publicId && r.publicId.trim()) || nano();
-        const status = ['pending', 'in_progress', 'complete', 'blocked'].includes((r.status||'').trim()) ? r.status.trim() : 'pending';
-        const completionDate = r.completionDate ? new Date(r.completionDate) : undefined;
-        
-        // Extract custom fields (any field that's not a standard field)
-        const standardFields = ['name', 'email', 'courseCode', 'batchCode', 'publicId', 'status', 'instructor', 'completionDate'];
+        // Build a normalized object based on mapping
+        const std = {
+          name: undefined,
+          email: undefined,
+          courseCode: undefined,
+          batchCode: undefined,
+          publicId: undefined,
+          status: undefined,
+          instructor: undefined,
+          completionDate: undefined,
+          amharicName: undefined,
+          amharicDate: undefined
+        };
         const customFields = {};
-        Object.keys(r).forEach(key => {
-          if (!standardFields.includes(key) && r[key]) {
-            customFields[key] = r[key];
+
+        for (const header of Object.keys(r)) {
+          const raw = r[header];
+          const target = mapping && mapping[header] ? mapping[header] : header;
+          if (!target) continue;
+          switch (target) {
+            case 'name': std.name = raw; break;
+            case 'amharicName': std.amharicName = raw; break;
+            case 'email': std.email = raw; break;
+            case 'courseCode': std.courseCode = raw; break;
+            case 'batchCode': std.batchCode = raw; break;
+            case 'publicId': std.publicId = raw; break;
+            case 'status': std.status = raw; break;
+            case 'instructor': std.instructor = raw; break;
+            case 'completionDate': std.completionDate = raw; break;
+            case 'amharicDate': std.amharicDate = raw; break;
+            default:
+              // treat as custom field
+              if (raw) customFields[target] = raw;
+              break;
           }
-        });
-        
+        }
+
+        const course = await getCourseByCode(std.courseCode || r.courseCode);
+        if (!course) throw new Error('course not found: ' + (std.courseCode || r.courseCode));
+        const batch = await getBatchByCode(course._id, std.batchCode || r.batchCode);
+        if (!batch) throw new Error('batch not found: ' + (std.batchCode || r.batchCode));
+        const publicId = (std.publicId && std.publicId.trim()) || nano();
+        const status = ['pending', 'in_progress', 'complete', 'blocked'].includes((std.status||'').trim()) ? std.status.trim() : 'pending';
+        const completionDate = std.completionDate ? new Date(std.completionDate) : undefined;
+
         const updateData = {
-          name: r.name,
-          email: r.email || undefined,
+          name: std.name,
+          amharicName: std.amharicName || undefined,
+          email: std.email || undefined,
           course: course._id,
           batch: batch._id,
           publicId,
           status,
-          instructor: r.instructor || undefined,
-          completionDate
+          instructor: std.instructor || undefined,
+          completionDate,
         };
-        
-        // Add custom fields if any exist
-        if (Object.keys(customFields).length > 0) {
-          updateData.customFields = customFields;
-        }
-        
+        if (Object.keys(customFields).length > 0) updateData.customFields = customFields;
+        if (std.amharicDate) updateData.amharicDate = std.amharicDate;
+
         await Student.findOneAndUpdate(
           { publicId },
           updateData,

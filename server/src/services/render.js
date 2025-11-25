@@ -130,13 +130,32 @@ export async function renderCertificatePNG({ template, payload }) {
   
   const processedFields = plainTextLayout.map((fieldObj) => {
     // Map the payload value to the field
-    const fieldValue = payload[fieldObj.field];
+    let fieldValue = payload[fieldObj.field];
     console.log(`Field mapping - Field: ${fieldObj.field}, Payload value:`, fieldValue, 'Type:', typeof fieldValue);
-    
+
+    // Fallback behavior for Amharic fields: if localized value missing, fall back to English equivalents
+    if ((!fieldValue || fieldValue === '') && fieldObj.field === 'amharicName') {
+      fieldValue = payload['name'] || '';
+      console.log('Fallback amharicName -> name:', fieldValue);
+    }
+    if ((!fieldValue || fieldValue === '') && fieldObj.field === 'amharicDate') {
+      fieldValue = payload['date'] || '';
+      console.log('Fallback amharicDate -> date:', fieldValue);
+    }
+
+    // If still empty and a custom field exists, try that
+    if ((fieldValue === undefined || fieldValue === null || fieldValue === '') && payload && typeof payload === 'object') {
+      if (fieldObj.field && payload.hasOwnProperty(fieldObj.field)) {
+        fieldValue = payload[fieldObj.field];
+      } else if (payload.customFields && payload.customFields[fieldObj.field]) {
+        fieldValue = payload.customFields[fieldObj.field];
+      }
+    }
+
     // Handle undefined/null values
     const finalValue = (fieldValue !== undefined && fieldValue !== null) ? String(fieldValue) : '';
     console.log(`Final value for ${fieldObj.field}: "${finalValue}"`);
-    
+
     return { 
       ...fieldObj, 
       value: finalValue

@@ -19,8 +19,10 @@ export default function TemplateUpload({ token }) {
   const [showSidebar, setShowSidebar] = useState(true)
   const [layout, setLayout] = useState([
     { field: "name", x: 800, y: 500, fontSize: 64, color: "#000000", align: "center", visible: true },
+    { field: "amharicName", x: 800, y: 540, fontSize: 64, color: "#000000", align: "center", visible: false },
     { field: "course", x: 800, y: 580, fontSize: 36, color: "#333333", align: "center", visible: true },
     { field: "date", x: 800, y: 660, fontSize: 28, color: "#555555", align: "center", visible: true },
+    { field: "amharicDate", x: 800, y: 700, fontSize: 28, color: "#555555", align: "center", visible: false },
     { field: "instructor", x: 800, y: 740, fontSize: 28, color: "#555555", align: "center", visible: true },
     { field: "batch", x: 800, y: 820, fontSize: 22, color: "#666666", align: "center", visible: true }
   ])
@@ -33,6 +35,19 @@ export default function TemplateUpload({ token }) {
   const canvasRef = useRef(null)
   const scaleRef = useRef(zoom)
   useEffect(() => { scaleRef.current = zoom }, [zoom])
+
+  // Available fields for templates (includes Amharic variants)
+  const FIELD_OPTIONS = [
+    { value: 'name', label: 'Student Name' },
+    { value: 'amharicName', label: 'Student Name (Amharic)' },
+    { value: 'course', label: 'Course Name' },
+    { value: 'date', label: 'Completion Date' },
+    { value: 'amharicDate', label: 'Completion Date (Amharic)' },
+    { value: 'instructor', label: 'Instructor' },
+    { value: 'batch', label: 'Batch Code' },
+    { value: 'publicId', label: 'Public ID' }
+  ];
+  const [fieldToAdd, setFieldToAdd] = useState(FIELD_OPTIONS[0].value)
 
   const fetchWithCache = useCallback(async (url) => {
     // Check cache first
@@ -230,6 +245,18 @@ export default function TemplateUpload({ token }) {
     })
   }
 
+  // Add a new field to the layout (if not already present)
+  const addFieldToLayout = (field) => {
+    if (!field) return
+    // Prevent duplicates
+    if (layout.some(i => i.field === field)) {
+      setMsg('Field already present in layout')
+      return
+    }
+    const defaults = { x: 800, y: 500, fontSize: 48, color: '#000000', align: 'center', visible: true }
+    setLayout(prev => [...prev, { field, ...defaults }])
+  }
+
   // Convert layout to JSON string for submission (including ALL elements with their visibility state)
   const layoutJson = JSON.stringify(layout, null, 2)
 
@@ -280,7 +307,9 @@ export default function TemplateUpload({ token }) {
   const getFieldLabel = (field) => {
     switch (field) {
       case 'name': return 'Student Name'
+      case 'amharicName': return 'Student Name (Amharic)'
       case 'course': return 'Course Name'
+      case 'amharicDate': return 'Completion Date (Amharic)'
       case 'date': return 'Completion Date'
       case 'instructor': return 'Instructor'
       case 'batch': return 'Batch Code'
@@ -471,6 +500,26 @@ export default function TemplateUpload({ token }) {
                 ) : (
                   // Text Elements Tab
                   <div id="tabpanel-text" role="tabpanel" aria-labelledby="tab-text" className="space-y-2 max-h-[70vh] lg:max-h-[75vh] overflow-y-auto pr-1">
+                    {/* Add field control: lets admin add extra fields (including Amharic) */}
+                    <div className="flex items-center gap-2 mb-2">
+                      <select
+                        className="select select-bordered select-sm"
+                        value={fieldToAdd}
+                        onChange={(e) => setFieldToAdd(e.target.value)}
+                      >
+                        {FIELD_OPTIONS.map(opt => (
+                          <option key={opt.value} value={opt.value}>{opt.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-outline"
+                        onClick={() => addFieldToLayout(fieldToAdd)}
+                      >
+                        Add Field
+                      </button>
+                      <div className="text-xs text-gray-500">Add common or Amharic fields to template</div>
+                    </div>
                     {layout.map((item, index) => (
                       <div key={index} className="border border-gray-200 rounded p-2 bg-gray-50">
                         <div className="flex items-center justify-between mb-2">
