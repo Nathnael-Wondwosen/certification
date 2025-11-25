@@ -178,41 +178,100 @@ export default function Students({ token }) {
   // Generate input field for a custom attribute
   const renderCustomField = (attr) => {
     const value = customFields[attr.name] || '';
+    const inputId = `field-${attr.name}`;
     
     return (
-      <div key={attr.name}>
-        <label className="label">{attr.label || attr.name}</label>
-        <input
-          className="input w-full"
-          placeholder={attr.placeholder || ''}
-          value={value}
-          onChange={(e) => handleCustomFieldChange(attr.name, e.target.value)}
-          required={attr.required || false}
-        />
+      <div key={attr.name} className="mb-4">
+        <label htmlFor={inputId} className="label">
+          <span>{attr.label || attr.name}</span>
+          {attr.required && <span className="text-red-500 ml-1">*</span>}
+        </label>
+        
+        {attr.type === 'select' ? (
+          <select
+            id={inputId}
+            className="select select-bordered w-full"
+            value={value}
+            onChange={(e) => handleCustomFieldChange(attr.name, e.target.value)}
+            required={attr.required}
+          >
+            <option value="">Select {attr.label || attr.name}</option>
+            {attr.options?.map((option, i) => (
+              <option key={i} value={option.value || option}>
+                {option.label || option}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id={inputId}
+            type={attr.type || 'text'}
+            className="input input-bordered w-full"
+            placeholder={attr.placeholder || `Enter ${attr.label || attr.name}`}
+            value={value}
+            onChange={(e) => handleCustomFieldChange(attr.name, e.target.value)}
+            required={attr.required}
+          />
+        )}
+        
+        {attr.description && (
+          <div className="text-xs text-gray-500 mt-1">
+            {attr.description}
+          </div>
+        )}
       </div>
     );
   };
 
+  // Validate required fields before submission
+  const validateForm = () => {
+    if (!courseCode) {
+      setMsg('Please select a course');
+      return false;
+    }
+    
+    if (!batchCode) {
+      setMsg('Please select a batch');
+      return false;
+    }
+    
+    // Check required custom fields
+    const missingFields = [];
+    courseAttributes.forEach(attr => {
+      if (attr.required && !customFields[attr.name]) {
+        missingFields.push(attr.label || attr.name);
+      }
+    });
+    
+    if (missingFields.length > 0) {
+      setMsg(`Please fill in all required fields: ${missingFields.join(', ')}`);
+      return false;
+    }
+    
+    return true;
+  };
+
   async function createStudent(e) {
-    e.preventDefault()
+    e.preventDefault();
+    
+    if (!validateForm()) {
+      return;
+    }
+    
     setMsg('Creating...');
     setCreatedId('');
     
-    // Filter out empty custom fields
-    const filteredCustomFields = Object.fromEntries(
-      Object.entries(customFields).filter(([_, value]) => value !== '')
-    );
-    
+    // Include all custom fields, even empty ones (they might be handled by the server)
     const body = { 
-      name, 
-      email, 
-      courseCode, 
-      batchCode, 
-      status: newStatus, 
-      instructor, 
+      name: name.trim(),
+      email: email.trim(),
+      courseCode,
+      batchCode,
+      status: newStatus,
+      instructor: instructor.trim(),
       completionDate,
-      customFields: filteredCustomFields
-    }
+      customFields: { ...customFields } // Send all fields, let server handle validation
+    };
     const res = await fetch('/api/admin/students', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
     })
@@ -348,15 +407,47 @@ export default function Students({ token }) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="label">Course</label>
-                  <select className="select w-full" value={courseCode} onChange={e=>{ setCourseCode(e.target.value); setBatchCode('')}}>
-                    {courses.map(c => <option key={c._id} value={c.code}>{c.name} ({c.code})</option>)}
+                  <select 
+                    className="select select-bordered w-full" 
+                    value={courseCode} 
+                    onChange={e => { 
+                      setCourseCode(e.target.value);
+                      setBatchCode('');
+                      setCustomFields({});
+                    }}
+                    disabled={courses.length === 0}
+                  >
+                    <option value="">Select a course</option>
+                    {courses.map(c => (
+                      <option key={c._id} value={c.code}>
+                        {c.name} ({c.code})
+                      </option>
+                    ))}
                   </select>
+                  {courses.length === 0 && (
+                    <div className="text-xs text-gray-500 mt-1">Loading courses...</div>
+                  )}
                 </div>
                 <div>
                   <label className="label">Batch</label>
-                  <select className="select w-full" value={batchCode} onChange={e=>setBatchCode(e.target.value)}>
-                    {batches.map(b => <option key={b._id} value={b.code}>{b.code}</option>)}
+                  <select 
+                    className="select select-bordered w-full" 
+                    value={batchCode} 
+                    onChange={e => setBatchCode(e.target.value)}
+                    disabled={batches.length === 0}
+                  >
+                    <option value="">Select a batch</option>
+                    {batches.map(b => (
+                      <option key={b._id} value={b.code}>
+                        {b.code}
+                      </option>
+                    ))}
                   </select>
+                  {batches.length === 0 && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      {courseCode ? 'Loading batches...' : 'Select a course first'}
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-3">
@@ -406,29 +497,64 @@ export default function Students({ token }) {
                   </select>
                 </div>
                 
-                {/* Dynamic Custom Fields */}
-                <div className="mt-4 pt-4 border-t border-gray-200">
-                  <h3 className="font-medium mb-3">
-                    Course Attributes 
-                    <span className="text-sm text-gray-500 ml-2">
-                      ({courseAttributes.length} attributes for {courseCode})
-                    </span>
-                  </h3>
-                  {courseAttributes.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3">
+                {/* Course Attributes Section */}
+                <div className={`mt-6 pt-4 ${courseAttributes.length > 0 ? 'border-t border-gray-200' : ''}`}>
+                  <div className="flex justify-between items-center mb-3">
+                    <h3 className="font-medium text-gray-700">
+                      Course Attributes
+                      {courseCode && (
+                        <span className="ml-2 text-sm font-normal text-gray-500">
+                          (for {courses.find(c => c.code === courseCode)?.name || 'selected course'})
+                        </span>
+                      )}
+                    </h3>
+                    {courseAttributes.length > 0 && (
+                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                        {courseAttributes.length} {courseAttributes.length === 1 ? 'attribute' : 'attributes'}
+                      </span>
+                    )}
+                  </div>
+                  
+                  {!courseCode ? (
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                      <div className="flex">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm text-yellow-700">
+                            Select a course to see available attributes
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : courseAttributes.length > 0 ? (
+                    <div className="space-y-4">
                       {courseAttributes.map((attr, index) => (
-                        <div key={index} className="p-2 bg-gray-50 rounded">
+                        <div key={index} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
                           {renderCustomField(attr)}
-                          <div className="text-xs text-gray-500 mt-1">
-                            Name: {attr.name} | Type: {attr.type || 'text'}
-                            {attr.required && ' | Required'}
+                          <div className="mt-1 flex items-center text-xs text-gray-500">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 mr-2">
+                              {attr.type || 'text'}
+                            </span>
+                            {attr.required && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                Required
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-500 italic">
-                      No custom attributes defined for this course.
+                    <div className="bg-gray-50 p-4 rounded-lg border border-dashed border-gray-300 text-center">
+                      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">No attributes defined</h3>
+                      <p className="mt-1 text-sm text-gray-500">This course doesn't have any custom attributes defined.</p>
                     </div>
                   )}
                 </div>
