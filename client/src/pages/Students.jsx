@@ -16,14 +16,14 @@ export default function Students({ token }) {
   const [email, setEmail] = useState('')
   const [instructor, setInstructor] = useState('')
   const [completionDate, setCompletionDate] = useState('')
-  const [an, setAn] = useState('')
-  const [ad, setAd] = useState('')
+  const [customFields, setCustomFields] = useState({})
   const [newStatus, setNewStatus] = useState('pending')
   const [createdId, setCreatedId] = useState('')
   const [courses, setCourses] = useState([])
   const [batches, setBatches] = useState([])
   const [instructors, setInstructors] = useState([])
   const [instructorMode, setInstructorMode] = useState('pick') // pick | other
+  const [courseAttributes, setCourseAttributes] = useState([]) // Store enabled attributes for selected course
 
   // Edit student form
   const [editingStudent, setEditingStudent] = useState(null)
@@ -102,32 +102,53 @@ export default function Students({ token }) {
       const coursesData = await fetchWithCache('/api/admin/courses', 'courses')
       if (coursesData) {
         setCourses(coursesData);
-        if (!courseCode && coursesData[0]) setCourseCode(coursesData[0].code)
+        if (!courseCode && coursesData[0]) {
+          setCourseCode(coursesData[0].code);
+          // Set initial course attributes if available
+          if (coursesData[0].attributes) {
+            setCourseAttributes(coursesData[0].attributes);
+          }
+        }
       }
     })()
   }, [])
 
-  // load batches for selected course with caching
+  // load batches and attributes for selected course with caching
   useEffect(() => {
     (async () => {
-      const course = courses.find(c => c.code === courseCode)
-      if (!course) { setBatches([]); return }
+      const course = courses.find(c => c.code === courseCode);
+      if (!course) { 
+        setBatches([]);
+        setCourseAttributes([]);
+        return; 
+      }
+      
+      // Set course attributes if available
+      if (course.attributes) {
+        setCourseAttributes(course.attributes);
+      } else {
+        setCourseAttributes([]);
+      }
       
       // Check if we have cached batches for this course
-      const cacheKey = `batches_${course._id}`
-      const batchesData = await fetchWithCache(`/api/admin/batches?courseId=${course._id}`, cacheKey)
+      const cacheKey = `batches_${course._id}`;
+      const batchesData = await fetchWithCache(`/api/admin/batches?courseId=${course._id}`, cacheKey);
       if (batchesData) {
         setBatches(batchesData);
-        if (!batchCode && batchesData[0]) setBatchCode(batchesData[0].code)
+        if (!batchCode && batchesData[0]) setBatchCode(batchesData[0].code);
       }
       
       // refresh instructors for the selected course
-      const instData = await fetchWithCache(`/api/admin/instructors?courseCode=${encodeURIComponent(course.code)}`, `instructors_${course.code}`)
-      if (instData) setInstructors(instData)
-    })()
+      const instData = await fetchWithCache(
+        `/api/admin/instructors?courseCode=${encodeURIComponent(course.code)}`,
+        `instructors_${course.code}`
+      );
+      if (instData) setInstructors(instData);
+    })();
+    
     // reset paging when filters change
-    setPage(1)
-    load()
+    setPage(1);
+    load();
   }, [courseCode, courses])
 
   async function updateStatus(id, value) {
@@ -140,9 +161,42 @@ export default function Students({ token }) {
     setMsg('Updated'); load()
   }
 
+  // Handle custom field changes
+  const handleCustomFieldChange = (field, value) => {
+    setCustomFields(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  // Generate input field for a custom attribute
+  const renderCustomField = (attr) => {
+    const value = customFields[attr.name] || '';
+    
+    return (
+      <div key={attr.name}>
+        <label className="label">{attr.label || attr.name}</label>
+        <input
+          className="input w-full"
+          placeholder={attr.placeholder || ''}
+          value={value}
+          onChange={(e) => handleCustomFieldChange(attr.name, e.target.value)}
+          required={attr.required || false}
+        />
+      </div>
+    );
+  };
+
   async function createStudent(e) {
     e.preventDefault()
-    setMsg('Creating...'); setCreatedId('')
+    setMsg('Creating...');
+    setCreatedId('');
+    
+    // Filter out empty custom fields
+    const filteredCustomFields = Object.fromEntries(
+      Object.entries(customFields).filter(([_, value]) => value !== '')
+    );
+    
     const body = { 
       name, 
       email, 
@@ -151,10 +205,7 @@ export default function Students({ token }) {
       status: newStatus, 
       instructor, 
       completionDate,
-      customFields: {
-        an,
-        ad
-      }
+      customFields: filteredCustomFields
     }
     const res = await fetch('/api/admin/students', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
@@ -163,9 +214,10 @@ export default function Students({ token }) {
     setMsg('Created')
     setCreatedId(data.publicId)
     setName(''); setEmail(''); setInstructor(''); setCompletionDate('')
+    setCustomFields({});
     // after create, reload first page to include newest at top
-    setPage(1)
-    load()
+    setPage(1);
+    load();
   }
 
   function copyId(id) {
@@ -325,6 +377,16 @@ export default function Students({ token }) {
                     <option value="blocked">blocked</option>
                   </select>
                 </div>
+                
+                {/* Dynamic Custom Fields */}
+                {courseAttributes.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-gray-200">
+                    <h3 className="font-medium mb-3">Course Attributes</h3>
+                    <div className="grid grid-cols-1 gap-3">
+                      {courseAttributes.map(attr => renderCustomField(attr))}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <button className="btn" type="submit">Create</button>
