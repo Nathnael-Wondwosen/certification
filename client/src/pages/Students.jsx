@@ -23,7 +23,7 @@ export default function Students({ token }) {
   const [batches, setBatches] = useState([])
   const [instructors, setInstructors] = useState([])
   const [instructorMode, setInstructorMode] = useState('pick') // pick | other
-  const [courseAttributes, setCourseAttributes] = useState([]) // Store enabled attributes for selected course
+  const [templateFields, setTemplateFields] = useState([]) // Store fields from template textLayout
 
   // Edit student form
   const [editingStudent, setEditingStudent] = useState(null)
@@ -35,8 +35,7 @@ export default function Students({ token }) {
     status: 'pending',
     instructor: '',
     completionDate: '',
-    an: '',
-    ad: ''
+    customFields: {}
   })
 
   // Cache for dropdown data
@@ -96,65 +95,17 @@ export default function Students({ token }) {
 
   useEffect(() => { load() }, [page])
 
-  // load courses and instructors for dropdowns with caching
+  // load courses for dropdowns with caching
   useEffect(() => {
     (async () => {
       try {
-        console.log('Fetching courses...');
-        const coursesData = await fetchWithCache('/api/admin/courses?include=attributes', 'courses');
-        console.log('Courses data received:', coursesData);
-        
+        const coursesData = await fetchWithCache('/api/admin/courses', 'courses');
         if (coursesData && Array.isArray(coursesData)) {
-          // If we have a specific course code we're looking for (e.g., 'COFFEE_CUPPING')
-          const targetCourseCode = 'COFFEE_CUPPING'; // Adjust this to match your course code
-          const targetCourse = coursesData.find(c => c.code === targetCourseCode);
-          
           setCourses(coursesData);
-          
-          // If we found the target course, select it by default
-          if (targetCourse) {
-            console.log(`Found target course (${targetCourseCode}):`, targetCourse);
-            setCourseCode(targetCourse.code);
-            
-            if (targetCourse.attributes && targetCourse.attributes.length > 0) {
-              console.log(`Setting attributes for ${targetCourseCode}:`, targetCourse.attributes);
-              setCourseAttributes(targetCourse.attributes);
-            } else {
-              console.log(`No attributes found for ${targetCourseCode}, attempting to load them...`);
-              // Try to load attributes specifically for this course
-              try {
-                const res = await fetch(`/api/admin/courses/${targetCourse._id}?include=attributes`, {
-                  headers: { Authorization: `Bearer ${token}` }
-                });
-                const detailedCourse = await res.json();
-                
-                if (detailedCourse.attributes && detailedCourse.attributes.length > 0) {
-                  console.log(`Fetched attributes for ${targetCourseCode}:`, detailedCourse.attributes);
-                  setCourseAttributes(detailedCourse.attributes);
-                  // Update the course in the courses array
-                  const updatedCourses = coursesData.map(c => 
-                    c._id === targetCourse._id ? { ...c, attributes: detailedCourse.attributes } : c
-                  );
-                  setCourses(updatedCourses);
-                } else {
-                  console.log(`No attributes found in detailed fetch for ${targetCourseCode}`);
-                  setCourseAttributes([]);
-                }
-              } catch (error) {
-                console.error(`Error fetching attributes for ${targetCourseCode}:`, error);
-                setCourseAttributes([]);
-              }
-            }
-          } 
-          // If no target course is found and no course is selected, select the first one
-          else if (!courseCode && coursesData[0]) {
-            const firstCourse = coursesData[0];
-            console.log('Setting initial course:', firstCourse.code, 'with attributes:', firstCourse?.attributes);
-            setCourseCode(firstCourse.code);
-            setCourseAttributes(firstCourse.attributes || []);
+          // Select the first course by default if none selected
+          if (!courseCode && coursesData[0]) {
+            setCourseCode(coursesData[0].code);
           }
-        } else {
-          console.error('Invalid courses data received:', coursesData);
         }
       } catch (error) {
         console.error('Error loading courses:', error);
@@ -162,62 +113,20 @@ export default function Students({ token }) {
     })();
   }, [])
 
-  // load batches and attributes for selected course with caching
+  // load batches for selected course with caching
   useEffect(() => {
     (async () => {
-      if (!courseCode || !courses || courses.length === 0) {
-        console.log('No course selected or courses not loaded yet');
+      if (!courseCode) {
         setBatches([]);
-        setCourseAttributes([]);
+        setTemplateFields([]);
         return;
       }
       
-      console.log('Available courses:', courses);
       const course = courses.find(c => c.code === courseCode);
-      
       if (!course) {
-        console.error('Selected course not found in courses list:', courseCode);
         setBatches([]);
-        setCourseAttributes([]);
+        setTemplateFields([]);
         return;
-      }
-      
-      console.log('Selected course data:', {
-        code: course.code,
-        name: course.name,
-        attributes: course.attributes,
-        hasAttributes: !!course.attributes && course.attributes.length > 0
-      });
-      
-      // Set course attributes if available
-      if (course.attributes && course.attributes.length > 0) {
-        console.log('Setting course attributes:', course.attributes);
-        setCourseAttributes(course.attributes);
-      } else {
-        console.log('No attributes found for course:', course.code, course.name);
-        // Try to fetch attributes specifically for this course if not included
-        try {
-          console.log('Attempting to fetch attributes for course:', course.code);
-          const res = await fetch(`/api/admin/courses/${course._id}?include=attributes`, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          const courseWithAttrs = await res.json();
-          
-          if (courseWithAttrs.attributes && courseWithAttrs.attributes.length > 0) {
-            console.log('Fetched attributes for course:', courseWithAttrs.attributes);
-            setCourseAttributes(courseWithAttrs.attributes);
-            // Update the course in the courses array
-            setCourses(prev => prev.map(c => 
-              c._id === course._id ? { ...c, attributes: courseWithAttrs.attributes } : c
-            ));
-          } else {
-            console.log('No attributes found in detailed course fetch');
-            setCourseAttributes([]);
-          }
-        } catch (error) {
-          console.error('Error fetching course attributes:', error);
-          setCourseAttributes([]);
-        }
       }
       
       // Check if we have cached batches for this course
@@ -241,6 +150,56 @@ export default function Students({ token }) {
     load();
   }, [courseCode, courses])
 
+  // Load template fields when both course and batch are selected
+  useEffect(() => {
+    (async () => {
+      if (!courseCode || !batchCode) {
+        setTemplateFields([]);
+        return;
+      }
+      
+      try {
+        // First get the course and batch IDs
+        const course = courses.find(c => c.code === courseCode);
+        if (!course) return;
+        
+        const batch = batches.find(b => b.code === batchCode);
+        if (!batch) return;
+        
+        // Fetch the template for this course and batch
+        const res = await fetch(`/api/admin/templates`, { 
+          headers: { Authorization: `Bearer ${token}` } 
+        });
+        
+        if (!res.ok) return;
+        
+        const templates = await res.json();
+        const template = templates.find(t => 
+          t.courseCode === courseCode && t.batchCode === batchCode
+        );
+        
+        if (template && template.textLayout) {
+          // Extract custom fields from textLayout (excluding standard fields)
+          const standardFields = ['name', 'course', 'date', 'instructor', 'batch'];
+          const customTemplateFields = template.textLayout
+            .filter(item => item.visible && !standardFields.includes(item.field))
+            .map(item => ({
+              name: item.field,
+              label: getFieldLabel(item.field),
+              type: 'text', // Default type
+              required: false // Default not required
+            }));
+          setTemplateFields(customTemplateFields);
+        } else {
+          setTemplateFields([]);
+        }
+      } catch (error) {
+        console.error('Error loading template fields:', error);
+        setTemplateFields([]);
+      }
+    })();
+  }, [courseCode, batchCode, courses, batches, token]);
+
   async function updateStatus(id, value) {
     setMsg('Updating...')
     const res = await fetch(`/api/admin/students/${id}/status`, {
@@ -259,50 +218,38 @@ export default function Students({ token }) {
     }));
   };
 
+  // Get field label for template fields
+  const getFieldLabel = (field) => {
+    switch (field) {
+      case 'name': return 'Student Name'
+      case 'course': return 'Course Name'
+      case 'date': return 'Completion Date'
+      case 'instructor': return 'Instructor'
+      case 'batch': return 'Batch Code'
+      case 'an': return 'AN (Award Number)'
+      case 'ad': return 'AD (Award Date)'
+      default: return field.charAt(0).toUpperCase() + field.slice(1)
+    }
+  }
+
   // Generate input field for a custom attribute
-  const renderCustomField = (attr) => {
-    const value = customFields[attr.name] || '';
-    const inputId = `field-${attr.name}`;
+  const renderCustomField = (field) => {
+    const value = customFields[field.name] || '';
+    const inputId = `field-${field.name}`;
     
     return (
-      <div key={attr.name} className="mb-4">
+      <div key={field.name} className="mb-4">
         <label htmlFor={inputId} className="label">
-          <span>{attr.label || attr.name}</span>
-          {attr.required && <span className="text-red-500 ml-1">*</span>}
+          <span>{field.label || field.name}</span>
         </label>
-        
-        {attr.type === 'select' ? (
-          <select
-            id={inputId}
-            className="select select-bordered w-full"
-            value={value}
-            onChange={(e) => handleCustomFieldChange(attr.name, e.target.value)}
-            required={attr.required}
-          >
-            <option value="">Select {attr.label || attr.name}</option>
-            {attr.options?.map((option, i) => (
-              <option key={i} value={option.value || option}>
-                {option.label || option}
-              </option>
-            ))}
-          </select>
-        ) : (
-          <input
-            id={inputId}
-            type={attr.type || 'text'}
-            className="input input-bordered w-full"
-            placeholder={attr.placeholder || `Enter ${attr.label || attr.name}`}
-            value={value}
-            onChange={(e) => handleCustomFieldChange(attr.name, e.target.value)}
-            required={attr.required}
-          />
-        )}
-        
-        {attr.description && (
-          <div className="text-xs text-gray-500 mt-1">
-            {attr.description}
-          </div>
-        )}
+        <input
+          id={inputId}
+          type={field.type || 'text'}
+          className="input input-bordered w-full"
+          placeholder={field.placeholder || `Enter ${field.label || field.name}`}
+          value={value}
+          onChange={(e) => handleCustomFieldChange(field.name, e.target.value)}
+        />
       </div>
     );
   };
@@ -319,19 +266,6 @@ export default function Students({ token }) {
       return false;
     }
     
-    // Check required custom fields
-    const missingFields = [];
-    courseAttributes.forEach(attr => {
-      if (attr.required && !customFields[attr.name]) {
-        missingFields.push(attr.label || attr.name);
-      }
-    });
-    
-    if (missingFields.length > 0) {
-      setMsg(`Please fill in all required fields: ${missingFields.join(', ')}`);
-      return false;
-    }
-    
     return true;
   };
 
@@ -345,7 +279,7 @@ export default function Students({ token }) {
     setMsg('Creating...');
     setCreatedId('');
     
-    // Include all custom fields, even empty ones (they might be handled by the server)
+    // Include all custom fields
     const body = { 
       name: name.trim(),
       email: email.trim(),
@@ -354,8 +288,9 @@ export default function Students({ token }) {
       status: newStatus,
       instructor: instructor.trim(),
       completionDate,
-      customFields: { ...customFields } // Send all fields, let server handle validation
+      customFields: { ...customFields }
     };
+    
     const res = await fetch('/api/admin/students', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
     })
@@ -384,8 +319,7 @@ export default function Students({ token }) {
       status: student.status,
       instructor: student.instructor || '',
       completionDate: student.completionDate ? student.completionDate.split('T')[0] : '',
-      an: student.customFields?.an || '',
-      ad: student.customFields?.ad || ''
+      customFields: student.customFields || {}
     })
   }
 
@@ -403,20 +337,23 @@ export default function Students({ token }) {
     }))
   }
 
+  // Handle custom field changes in edit form
+  function handleEditCustomFieldChange(field, value) {
+    setEditForm(prev => ({
+      ...prev,
+      customFields: {
+        ...prev.customFields,
+        [field]: value
+      }
+    }))
+  }
+
   // Update student
   async function updateStudent(e) {
     e.preventDefault()
     setMsg('Updating...')
     
-    const { an, ad, ...rest } = editForm;
-    const updateData = {
-      ...rest,
-      customFields: {
-        an,
-        ad,
-        ...(editingStudent?.customFields || {}) // Preserve other custom fields if they exist
-      }
-    };
+    const updateData = { ...editForm };
     
     const res = await fetch(`/api/admin/students/${editingStudent}`, {
       method: 'PUT',
@@ -458,30 +395,8 @@ export default function Students({ token }) {
     load()
   }
 
-  // Debug function to fetch and log course data
-  const debugFetchCourses = async () => {
-    try {
-      const res = await fetch('/api/admin/courses', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      console.log('Courses API Response:', data);
-      alert('Check console for course data');
-    } catch (error) {
-      console.error('Error fetching courses:', error);
-      alert('Error fetching courses. Check console for details.');
-    }
-  };
-
   return (
     <div className="w-full">
-      <button 
-        onClick={debugFetchCourses}
-        className="fixed bottom-4 right-4 bg-red-500 text-white p-2 rounded-full shadow-lg z-50"
-        title="Debug: Fetch Course Data"
-      >
-        🐞
-      </button>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column - Create Student Form */}
         <div className="lg:col-span-1">
@@ -517,7 +432,10 @@ export default function Students({ token }) {
                   <select 
                     className="select select-bordered w-full" 
                     value={batchCode} 
-                    onChange={e => setBatchCode(e.target.value)}
+                    onChange={e => { 
+                      setBatchCode(e.target.value);
+                      setCustomFields({});
+                    }}
                     disabled={batches.length === 0}
                   >
                     <option value="">Select a batch</option>
@@ -537,11 +455,11 @@ export default function Students({ token }) {
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="label">Name</label>
-                  <input className="input w-full" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
+                  <input className="input w-full" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} required />
                 </div>
                 <div>
                   <label className="label">Email</label>
-                  <input className="input w-full" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+                  <input className="input w-full" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} type="email" />
                 </div>
               </div>
               <div className="grid grid-cols-1 gap-3">
@@ -581,25 +499,25 @@ export default function Students({ token }) {
                   </select>
                 </div>
                 
-                {/* Course Attributes Section */}
-                <div className={`mt-6 pt-4 ${courseAttributes.length > 0 ? 'border-t border-gray-200' : ''}`}>
+                {/* Template Fields Section */}
+                <div className={`mt-6 pt-4 ${templateFields.length > 0 ? 'border-t border-gray-200' : ''}`}>
                   <div className="flex justify-between items-center mb-3">
                     <h3 className="font-medium text-gray-700">
-                      Course Attributes
-                      {courseCode && (
+                      Custom Fields
+                      {courseCode && batchCode && (
                         <span className="ml-2 text-sm font-normal text-gray-500">
-                          (for {courses.find(c => c.code === courseCode)?.name || 'selected course'})
+                          (for {courses.find(c => c.code === courseCode)?.name || 'selected course'} - {batchCode})
                         </span>
                       )}
                     </h3>
-                    {courseAttributes.length > 0 && (
+                    {templateFields.length > 0 && (
                       <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                        {courseAttributes.length} {courseAttributes.length === 1 ? 'attribute' : 'attributes'}
+                        {templateFields.length} {templateFields.length === 1 ? 'field' : 'fields'}
                       </span>
                     )}
                   </div>
                   
-                  {!courseCode ? (
+                  {!courseCode || !batchCode ? (
                     <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
                       <div className="flex">
                         <div className="flex-shrink-0">
@@ -609,26 +527,16 @@ export default function Students({ token }) {
                         </div>
                         <div className="ml-3">
                           <p className="text-sm text-yellow-700">
-                            Select a course to see available attributes
+                            Select a course and batch to see available custom fields
                           </p>
                         </div>
                       </div>
                     </div>
-                  ) : courseAttributes.length > 0 ? (
+                  ) : templateFields.length > 0 ? (
                     <div className="space-y-4">
-                      {courseAttributes.map((attr, index) => (
+                      {templateFields.map((field, index) => (
                         <div key={index} className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                          {renderCustomField(attr)}
-                          <div className="mt-1 flex items-center text-xs text-gray-500">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800 mr-2">
-                              {attr.type || 'text'}
-                            </span>
-                            {attr.required && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                Required
-                              </span>
-                            )}
-                          </div>
+                          {renderCustomField(field)}
                         </div>
                       ))}
                     </div>
@@ -637,8 +545,8 @@ export default function Students({ token }) {
                       <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                       </svg>
-                      <h3 className="mt-2 text-sm font-medium text-gray-900">No attributes defined</h3>
-                      <p className="mt-1 text-sm text-gray-500">This course doesn't have any custom attributes defined.</p>
+                      <h3 className="mt-2 text-sm font-medium text-gray-900">No custom fields defined</h3>
+                      <p className="mt-1 text-sm text-gray-500">This template doesn't have any custom fields defined.</p>
                     </div>
                   )}
                 </div>
@@ -662,6 +570,7 @@ export default function Students({ token }) {
             <h2 className="text-lg font-semibold mb-3">Search</h2>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <select className="select w-full" value={courseCode} onChange={e=>{ setCourseCode(e.target.value); setBatchCode('')}}>
+                <option value="">All courses</option>
                 {courses.map(c => <option key={c._id} value={c.code}>{c.name} ({c.code})</option>)}
               </select>
               <select className="select w-full" value={batchCode} onChange={e=>setBatchCode(e.target.value)}>
@@ -848,6 +757,26 @@ export default function Students({ token }) {
                   </select>
                 </div>
               </div>
+              
+              {/* Custom Fields in Edit Form */}
+              {templateFields.length > 0 && (
+                <div className="border-t border-gray-200 pt-4">
+                  <h3 className="font-medium text-gray-700 mb-3">Custom Fields</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {templateFields.map((field, index) => (
+                      <div key={index}>
+                        <label className="label">{field.label || field.name}</label>
+                        <input 
+                          className="input w-full" 
+                          value={editForm.customFields?.[field.name] || ''} 
+                          onChange={(e) => handleEditCustomFieldChange(field.name, e.target.value)} 
+                          placeholder={field.placeholder || `Enter ${field.label || field.name}`}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               
               <div className="flex justify-end gap-2">
                 <button 
