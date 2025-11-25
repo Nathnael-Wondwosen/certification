@@ -15,9 +15,7 @@ export default function Students({ token }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [instructor, setInstructor] = useState('')
-  const [amharicName, setAmharicName] = useState('')
   const [completionDate, setCompletionDate] = useState('')
-  const [amharicDate, setAmharicDate] = useState('')
   const [newStatus, setNewStatus] = useState('pending')
   const [createdId, setCreatedId] = useState('')
   const [courses, setCourses] = useState([])
@@ -29,21 +27,16 @@ export default function Students({ token }) {
   const [editingStudent, setEditingStudent] = useState(null)
   const [editForm, setEditForm] = useState({
     name: '',
-    amharicName: '',
     email: '',
     courseCode: '',
     batchCode: '',
     status: 'pending',
     instructor: '',
-    completionDate: '',
-    amharicDate: ''
+    completionDate: ''
   })
 
   // Cache for dropdown data
   const [cache, setCache] = useState({})
-  const [templates, setTemplates] = useState([])
-  const [activeTemplateFields, setActiveTemplateFields] = useState([])
-  const [customFieldValues, setCustomFieldValues] = useState({})
 
   const fetchWithCache = useCallback(async (url, cacheKey) => {
     // Check cache first
@@ -99,14 +92,6 @@ export default function Students({ token }) {
 
   useEffect(() => { load() }, [page])
 
-  // Load templates once (cached)
-  useEffect(() => {
-    (async () => {
-      const t = await fetchWithCache('/api/admin/templates', 'templates')
-      if (t) setTemplates(t)
-    })()
-  }, [fetchWithCache])
-
   // load courses and instructors for dropdowns with caching
   useEffect(() => {
     (async () => {
@@ -139,18 +124,6 @@ export default function Students({ token }) {
     // reset paging when filters change
     setPage(1)
     load()
-    // Update active template fields for the selected course+batch so the create form shows correct inputs
-    try {
-      const tpl = templates.find(x => x.courseCode === courseCode && x.batchCode === batchCode)
-      if (tpl && Array.isArray(tpl.textLayout)) {
-        const visible = tpl.textLayout.filter(i => i.visible !== false).map(i => i.field)
-        setActiveTemplateFields(visible)
-      } else {
-        setActiveTemplateFields([])
-      }
-    } catch (e) {
-      setActiveTemplateFields([])
-    }
   }, [courseCode, courses])
 
   async function updateStatus(id, value) {
@@ -166,9 +139,7 @@ export default function Students({ token }) {
   async function createStudent(e) {
     e.preventDefault()
     setMsg('Creating...'); setCreatedId('')
-    const body = { name, amharicName, email, courseCode, batchCode, status: newStatus, instructor, completionDate, amharicDate }
-    // include custom field values if any
-    if (Object.keys(customFieldValues).length > 0) body.customFields = customFieldValues
+    const body = { name, email, courseCode, batchCode, status: newStatus, instructor, completionDate }
     const res = await fetch('/api/admin/students', {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body)
     })
@@ -190,27 +161,13 @@ export default function Students({ token }) {
     setEditingStudent(student._id)
     setEditForm({
       name: student.name,
-      amharicName: student.amharicName || '',
       email: student.email || '',
       courseCode: student.courseCode,
       batchCode: student.batchCode,
       status: student.status,
       instructor: student.instructor || '',
-      completionDate: student.completionDate ? student.completionDate.split('T')[0] : '',
-      amharicDate: student.amharicDate || ''
+      completionDate: student.completionDate ? student.completionDate.split('T')[0] : ''
     })
-    // set active template fields for this student's course+batch so edit form shows correct inputs
-    try {
-      const tpl = templates.find(x => x.courseCode === student.courseCode && x.batchCode === student.batchCode)
-      if (tpl && Array.isArray(tpl.textLayout)) {
-        const visible = tpl.textLayout.filter(i => i.visible !== false).map(i => i.field)
-        setActiveTemplateFields(visible)
-      } else {
-        setActiveTemplateFields([])
-      }
-    } catch (e) {
-      setActiveTemplateFields([])
-    }
   }
 
   // Close edit form
@@ -299,12 +256,6 @@ export default function Students({ token }) {
                   <label className="label">Name</label>
                   <input className="input w-full" placeholder="Name" value={name} onChange={e=>setName(e.target.value)} />
                 </div>
-                {activeTemplateFields.includes('amharicName') && (
-                  <div>
-                    <label className="label">Name (Amharic)</label>
-                    <input className="input w-full" placeholder="ስም (Amharic)" value={amharicName} onChange={e=>setAmharicName(e.target.value)} />
-                  </div>
-                )}
                 <div>
                   <label className="label">Email</label>
                   <input className="input w-full" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
@@ -335,12 +286,6 @@ export default function Students({ token }) {
                   <label className="label">Completion Date</label>
                   <input className="input w-full" type="date" value={completionDate} onChange={e=>setCompletionDate(e.target.value)} />
                 </div>
-                {activeTemplateFields.includes('amharicDate') && (
-                  <div>
-                    <label className="label">Completion Date (Amharic)</label>
-                    <input className="input w-full" placeholder="Amharic date text" value={amharicDate} onChange={e=>setAmharicDate(e.target.value)} />
-                  </div>
-                )}
               </div>
               <div className="grid grid-cols-1 gap-3 items-end">
                 <div>
@@ -475,12 +420,6 @@ export default function Students({ token }) {
                     required
                   />
                 </div>
-                {activeTemplateFields.includes('amharicName') && (
-                  <div>
-                    <label className="label">Name (Amharic)</label>
-                    <input className="input w-full" name="amharicName" value={editForm.amharicName} onChange={handleEditChange} />
-                  </div>
-                )}
                 <div>
                   <label className="label">Email</label>
                   <input 

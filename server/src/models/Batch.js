@@ -5,8 +5,7 @@ const BatchSchema = new mongoose.Schema(
     course: { type: mongoose.Schema.Types.ObjectId, ref: 'Course', required: true, index: true },
     code: { type: String, required: true },
     year: { type: Number },
-    name: { type: String },
-    amharicName: { type: String }
+    name: { type: String }
   },
   { timestamps: true }
 );

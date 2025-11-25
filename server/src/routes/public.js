@@ -54,10 +54,8 @@ router.get('/certificate/:publicId/png', async (req, res) => {
     // Create a base payload with standard fields
     const payload = {
       name: student.name,
-      amharicName: student.amharicName || '',
       course: student.course.name,
       date: student.completionDate ? new Date(student.completionDate).toLocaleDateString() : new Date().toLocaleDateString(),
-      amharicDate: student.amharicDate || '',
       instructor: student.instructor || '',
       batch: student.batch.code
     };
